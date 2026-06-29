@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Exercise, WorkoutBlock, WorkoutSession, WorkoutTemplate } from "../types";
+import type { Exercise, WorkoutBlock, WorkoutSession, WorkoutSet, WorkoutTemplate } from "../types";
 import RoutineBuilderPanel from "./RoutineBuilderPanel";
 import WorkoutCard from "./WorkoutCard";
 import {
@@ -19,12 +19,15 @@ import {
   updateWorkoutExerciseNote,
 } from "../services/workoutService";
 import { loadWorkoutHistory } from "../storage/workoutHistory";
+import { loadActiveWorkoutState, saveActiveWorkoutState } from "../storage/workoutSession";
 
 interface WorkoutChatPanelProps {
   mode: "routine" | "free";
   onSaved: () => void;
   onGoHome: () => void;
   onViewHistory: () => void;
+  onBack: () => void;
+  backRequestId: number;
 }
 
 const exerciseNotes = ["Técnica bien", "Mejorar técnica", "Molestia", "Muy pesado", "Subir peso próxima vez", "Mantener peso"];
@@ -38,8 +41,10 @@ interface WorkoutStep {
   exerciseIndex: number;
 }
 
-export default function WorkoutChatPanel({ mode, onSaved, onGoHome, onViewHistory }: WorkoutChatPanelProps) {
+export default function WorkoutChatPanel({ mode, onSaved, onGoHome, onViewHistory, onBack, backRequestId }: WorkoutChatPanelProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const initialActiveStateRef = useRef(loadActiveWorkoutState());
+  const lastHandledBackRequestRef = useRef(backRequestId);
   const [templates, setTemplates] = useState<WorkoutTemplate[]>(() => getWorkoutTemplates());
   const [showRoutineBuilder, setShowRoutineBuilder] = useState(false);
   const [routineBuilderTemplateId, setRoutineBuilderTemplateId] = useState<string | undefined>();
@@ -51,22 +56,57 @@ export default function WorkoutChatPanel({ mode, onSaved, onGoHome, onViewHistor
   });
   const normalizedTemplate = template ? normalizeWorkoutTemplate(template) : null;
   const steps = useMemo(() => (normalizedTemplate ? buildWorkoutSteps(normalizedTemplate) : []), [normalizedTemplate]);
-  const [stepIndex, setStepIndex] = useState(0);
+  const [stepIndex, setStepIndex] = useState(initialActiveStateRef.current?.currentStepIndex ?? 0);
   const currentStep = steps[stepIndex];
   const currentExercise = currentStep?.exercise;
   const suggestion = currentExercise ? getSuggestedStart(currentExercise) : null;
-  const [weightKg, setWeightKg] = useState(suggestion?.weightKg ?? 0);
-  const [reps, setReps] = useState(suggestion?.reps ?? 10);
+  const [weightKg, setWeightKg] = useState(initialActiveStateRef.current?.currentWeightKg ?? suggestion?.weightKg ?? 0);
+  const [reps, setReps] = useState(initialActiveStateRef.current?.currentReps ?? suggestion?.reps ?? 10);
+  const [timeSeconds, setTimeSeconds] = useState(initialActiveStateRef.current?.currentTimeSeconds ?? currentExercise?.targetTimeSeconds ?? 30);
   const [defaultRestSeconds, setDefaultRestSeconds] = useState(90);
-  const [restSecondsLeft, setRestSecondsLeft] = useState(0);
-  const [isRestPaused, setIsRestPaused] = useState(false);
+  const [restSecondsLeft, setRestSecondsLeft] = useState(initialActiveStateRef.current?.restSecondsLeft ?? 0);
+  const [isRestPaused, setIsRestPaused] = useState(initialActiveStateRef.current?.isRestPaused ?? false);
   const [restDoneMessage, setRestDoneMessage] = useState("");
   const [pendingSummary, setPendingSummary] = useState<WorkoutSession | null>(null);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
+  const [exitAction, setExitAction] = useState<"home" | "back">("home");
 
   useEffect(() => {
     scrollContainerRef.current?.scrollTo({ top: 0, behavior: "smooth" });
   }, [stepIndex, showRoutineBuilder]);
+
+  useEffect(() => {
+    if (!session) {
+      return;
+    }
+
+    saveActiveWorkoutState({
+      currentStepIndex: stepIndex,
+      currentWeightKg: weightKg,
+      currentReps: reps,
+      currentTimeSeconds: timeSeconds,
+      restSecondsLeft,
+      isRestPaused,
+    });
+  }, [isRestPaused, reps, restSecondsLeft, session, stepIndex, timeSeconds, weightKg]);
+
+  useEffect(() => {
+    if (!session || !steps.length || steps[stepIndex]) {
+      return;
+    }
+
+    const pendingIndex = findFirstPendingStepIndex(steps, session);
+    moveToStep(pendingIndex, steps);
+  }, [session, stepIndex, steps]);
+
+  useEffect(() => {
+    if (backRequestId === lastHandledBackRequestRef.current) {
+      return;
+    }
+
+    lastHandledBackRequestRef.current = backRequestId;
+    handleBackRequest();
+  }, [backRequestId]);
 
   useEffect(() => {
     if (restSecondsLeft <= 0 || isRestPaused) {
@@ -104,6 +144,9 @@ export default function WorkoutChatPanel({ mode, onSaved, onGoHome, onViewHistor
     setStepIndex(0);
     setWeightKg(nextSuggestion.weightKg);
     setReps(nextSuggestion.reps);
+    setTimeSeconds(getInitialTimeSeconds(nextSteps[0].exercise));
+    setRestSecondsLeft(0);
+    setIsRestPaused(false);
   }
 
   function beginFreeWorkout() {
@@ -142,6 +185,7 @@ export default function WorkoutChatPanel({ mode, onSaved, onGoHome, onViewHistor
     setStepIndex(safeIndex);
     setWeightKg(nextSuggestion.weightKg);
     setReps(nextSuggestion.reps);
+    setTimeSeconds(getInitialTimeSeconds(nextExercise));
   }
 
   function confirmSet() {
@@ -149,6 +193,7 @@ export default function WorkoutChatPanel({ mode, onSaved, onGoHome, onViewHistor
       return;
     }
 
+    const isTimedExercise = isTimeBasedExercise(currentExercise);
     const nextSession = addSetToWorkout(session, {
       exerciseId: currentExercise.id,
       exerciseName: currentExercise.name,
@@ -157,17 +202,19 @@ export default function WorkoutChatPanel({ mode, onSaved, onGoHome, onViewHistor
       blockType: currentStep.block.type,
       roundNumber: currentStep.roundNumber,
       weightKg,
-      reps,
+      reps: isTimedExercise ? 0 : reps,
+      timeSeconds: isTimedExercise ? timeSeconds : undefined,
     });
 
     setSession(nextSession);
     const nextStep = steps[stepIndex + 1];
     const isRoundDone = !nextStep || nextStep.block.id !== currentStep.block.id || nextStep.roundNumber !== currentStep.roundNumber;
-    const nextRestSeconds = isRoundDone ? currentStep.block.restAfterRoundSeconds : currentStep.block.restBetweenExercisesSeconds ?? 0;
+    const configuredRestSeconds = isRoundDone ? currentStep.block.restAfterRoundSeconds : currentStep.block.restBetweenExercisesSeconds;
+    const nextRestSeconds = configuredRestSeconds ?? defaultRestSeconds;
 
-    setRestSecondsLeft(nextRestSeconds || defaultRestSeconds);
+    setRestSecondsLeft(nextRestSeconds);
     setIsRestPaused(false);
-    setRestDoneMessage(isRoundDone ? "Descanso de ronda activo." : "Próxima serie.");
+    setRestDoneMessage(nextRestSeconds > 0 ? (isRoundDone ? "Descanso de ronda activo." : "Proxima serie.") : "");
   }
 
   function goToPreviousExercise() {
@@ -192,18 +239,51 @@ export default function WorkoutChatPanel({ mode, onSaved, onGoHome, onViewHistor
 
   function handleDiscard() {
     if (session) {
+      if (session.sets.length === 0) {
+        discardCurrentWorkout("home");
+        return;
+      }
+
+      setExitAction("home");
       setShowExitConfirm(true);
       return;
     }
 
-    discardCurrentWorkout();
+    discardCurrentWorkout("home");
   }
 
-  function discardCurrentWorkout() {
+  function handleBackRequest() {
+    if (!session) {
+      onBack();
+      return;
+    }
+
+    if (session.sets.length === 0) {
+      discardCurrentWorkout("back");
+      return;
+    }
+
+    setExitAction("back");
+    setShowExitConfirm(true);
+  }
+
+  function finishExitAction() {
+    if (exitAction === "back") {
+      onBack();
+      return;
+    }
+
+    onGoHome();
+  }
+
+  function discardCurrentWorkout(nextExitAction = exitAction) {
     discardActiveWorkout();
     setSession(null);
     setTemplate(null);
     setShowExitConfirm(false);
+    if (nextExitAction === "back") {
+      onBack();
+    }
   }
 
   function saveCurrentAsIncomplete() {
@@ -216,7 +296,7 @@ export default function WorkoutChatPanel({ mode, onSaved, onGoHome, onViewHistor
     setTemplate(null);
     setShowExitConfirm(false);
     onSaved();
-    onGoHome();
+    finishExitAction();
   }
 
   function saveCompletedAndGoHome() {
@@ -279,6 +359,30 @@ export default function WorkoutChatPanel({ mode, onSaved, onGoHome, onViewHistor
           setRoutineBuilderTemplateId(undefined);
         }}
       />
+    );
+  }
+
+  if (session && !template) {
+    return (
+      <div className="flex h-full flex-col overflow-y-auto p-5">
+        <div className="rounded-2xl border border-[#FFD5C2] bg-white p-5 shadow-sm">
+          <div className="inline-flex rounded-full bg-[#FFF7F3] px-3 py-1 text-xs font-black text-[#FF8A5B]">
+            Recuperacion
+          </div>
+          <h2 className="mt-4 text-xl font-black text-[#1F2937]">Hay una sesion activa, pero no encontre la rutina original.</h2>
+          <p className="mt-2 text-sm leading-6 text-[#6B7280]">
+            Podes guardar lo cargado como incompleto o descartar esta sesion para arrancar de nuevo.
+          </p>
+          <div className="mt-5 grid gap-2">
+            <button type="button" className="rounded-xl bg-[#FF8A5B] px-3 py-3 text-sm font-bold text-white" onClick={saveCurrentAsIncomplete}>
+              Guardar como incompleta
+            </button>
+            <button type="button" className="secondary-button" onClick={() => discardCurrentWorkout("home")}>
+              Descartar
+            </button>
+          </div>
+        </div>
+      </div>
     );
   }
 
@@ -365,6 +469,7 @@ export default function WorkoutChatPanel({ mode, onSaved, onGoHome, onViewHistor
   const isFirstExercise = stepIndex === 0;
   const isLastExercise = stepIndex + 1 >= steps.length;
   const totalProgress = steps.length ? Math.round(((stepIndex + 1) / steps.length) * 100) : 0;
+  const isTimedExercise = isTimeBasedExercise(currentExercise);
 
   return (
     <div ref={scrollContainerRef} className="flex h-full flex-col overflow-y-auto p-5">
@@ -393,7 +498,7 @@ export default function WorkoutChatPanel({ mode, onSaved, onGoHome, onViewHistor
         <div className="mt-4 rounded-xl bg-[#F5F6FA] p-3 text-sm font-medium text-[#6B7280]">
           {suggestion?.lastSet ? (
             <span>
-              Ultima marca: {suggestion.lastSet.weightKg} kg x {suggestion.lastSet.reps} reps
+              Ultima marca: {formatSetValue(suggestion.lastSet)}
             </span>
           ) : currentExercise.previousWeightKg ? (
             <span>Marca previa: {currentExercise.previousWeightKg} kg</span>
@@ -411,7 +516,11 @@ export default function WorkoutChatPanel({ mode, onSaved, onGoHome, onViewHistor
           mode="decimal"
           onChange={setWeightKg}
         />
-        <EditableMetricControl label="Reps" value={reps} mode="integer" onChange={setReps} />
+        {isTimedExercise ? (
+          <EditableMetricControl label="Tiempo" value={timeSeconds} suffix="s" mode="integer" onChange={setTimeSeconds} />
+        ) : (
+          <EditableMetricControl label="Reps" value={reps} mode="integer" onChange={setReps} />
+        )}
       </div>
 
       <div className="mt-4 rounded-2xl border border-[#FFD5C2] bg-gradient-to-br from-[#FFF7F3] to-white p-4 shadow-sm">
@@ -470,8 +579,17 @@ export default function WorkoutChatPanel({ mode, onSaved, onGoHome, onViewHistor
         <QuickButton onClick={() => setWeightKg(suggestion?.weightKg ?? weightKg)}>Mismo peso</QuickButton>
         <QuickButton onClick={() => setWeightKg((value) => value + 2.5)}>+2.5 kg</QuickButton>
         <QuickButton onClick={() => setWeightKg((value) => Math.max(0, value - 2.5))}>-2.5 kg</QuickButton>
-        <QuickButton onClick={() => setReps((value) => value + 1)}>+ rep</QuickButton>
-        <QuickButton onClick={() => setReps((value) => Math.max(1, value - 1))}>- rep</QuickButton>
+        {isTimedExercise ? (
+          <>
+            <QuickButton onClick={() => setTimeSeconds((value) => value + 10)}>+10s</QuickButton>
+            <QuickButton onClick={() => setTimeSeconds((value) => Math.max(1, value - 10))}>-10s</QuickButton>
+          </>
+        ) : (
+          <>
+            <QuickButton onClick={() => setReps((value) => value + 1)}>+ rep</QuickButton>
+            <QuickButton onClick={() => setReps((value) => Math.max(1, value - 1))}>- rep</QuickButton>
+          </>
+        )}
       </div>
 
       <button
@@ -489,9 +607,7 @@ export default function WorkoutChatPanel({ mode, onSaved, onGoHome, onViewHistor
             {completedSets.map((set, index) => (
               <div key={set.id} className="flex justify-between rounded-xl bg-[#F5F6FA] px-3 py-2 text-sm font-medium text-[#1F2937]">
                 <span>Serie {index + 1}</span>
-                <span>
-                  {set.weightKg} kg x {set.reps}
-                </span>
+                <span>{formatSetValue(set)}</span>
               </div>
             ))}
           </div>
@@ -554,7 +670,7 @@ export default function WorkoutChatPanel({ mode, onSaved, onGoHome, onViewHistor
               <button type="button" className="rounded-xl bg-[#FF8A5B] px-3 py-3 text-sm font-bold text-white" onClick={saveCurrentAsIncomplete}>
                 Guardar como incompleta
               </button>
-              <button type="button" className="secondary-button" onClick={discardCurrentWorkout}>
+              <button type="button" className="secondary-button" onClick={() => discardCurrentWorkout()}>
                 Descartar
               </button>
               <button type="button" className="secondary-button" onClick={() => setShowExitConfirm(false)}>
@@ -573,7 +689,7 @@ function ExerciseMeta({ exercise }: { exercise: Exercise }) {
     <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
       <span className="rounded-lg bg-[#F5F6FA] px-2 py-2 font-bold text-[#6B7280]">{exercise.muscleGroup}</span>
       <span className="rounded-lg bg-[#F5F6FA] px-2 py-2 font-bold text-[#6B7280]">
-        {exercise.targetTimeSeconds ? `${exercise.targetTimeSeconds}s` : `${exercise.targetRepsMin ?? 8}-${exercise.targetRepsMax ?? 12} reps`}
+        {isTimeBasedExercise(exercise) ? `${getInitialTimeSeconds(exercise)}s` : `${exercise.targetRepsMin ?? 8}-${exercise.targetRepsMax ?? 12} reps`}
       </span>
       <span className="rounded-lg bg-[#F5F6FA] px-2 py-2 font-bold text-[#6B7280]">
         {exercise.suggestedWeightKg ?? exercise.previousWeightKg ? `${exercise.suggestedWeightKg ?? exercise.previousWeightKg} kg` : "Peso libre"}
@@ -914,6 +1030,38 @@ function buildWorkoutSteps(template: WorkoutTemplate): WorkoutStep[] {
   );
 }
 
+function findFirstPendingStepIndex(steps: WorkoutStep[], session: WorkoutSession) {
+  const pendingIndex = steps.findIndex(
+    (step) =>
+      !session.sets.some(
+        (set) =>
+          set.exerciseId === step.exercise.id &&
+          set.blockId === step.block.id &&
+          set.roundNumber === step.roundNumber,
+      ),
+  );
+
+  return pendingIndex >= 0 ? pendingIndex : Math.max(0, steps.length - 1);
+}
+
+function isTimeBasedExercise(exercise: Exercise) {
+  return Boolean(
+    exercise.targetTimeSeconds ||
+      exercise.exerciseType === "time" ||
+      exercise.exerciseType === "cardio" ||
+      exercise.exerciseType === "mobility",
+  );
+}
+
+function getInitialTimeSeconds(exercise: Exercise) {
+  return Math.max(1, exercise.targetTimeSeconds ?? 30);
+}
+
+function formatSetValue(set: Pick<WorkoutSet, "weightKg" | "reps" | "timeSeconds">) {
+  const weightLabel = set.weightKg > 0 ? `${set.weightKg} kg x ` : "";
+  return set.timeSeconds ? `${weightLabel}${set.timeSeconds}s` : `${set.weightKg} kg x ${set.reps}`;
+}
+
 function getBlockTypeLabel(type: WorkoutBlock["type"]) {
   if (type === "superset") {
     return "Superserie";
@@ -937,7 +1085,11 @@ function getRestStatus(currentStep: WorkoutStep, nextStep?: WorkoutStep) {
 
 function getRestProgress(secondsLeft: number, currentStep: WorkoutStep, nextStep: WorkoutStep | undefined, fallback: number) {
   const sameRound = nextStep?.block.id === currentStep.block.id && nextStep.roundNumber === currentStep.roundNumber;
-  const total = sameRound ? currentStep.block.restBetweenExercisesSeconds || fallback : currentStep.block.restAfterRoundSeconds || fallback;
+  const total = sameRound ? currentStep.block.restBetweenExercisesSeconds ?? fallback : currentStep.block.restAfterRoundSeconds ?? fallback;
+  if (total <= 0) {
+    return 0;
+  }
+
   return Math.max(0, Math.min(100, ((total - secondsLeft) / total) * 100));
 }
 

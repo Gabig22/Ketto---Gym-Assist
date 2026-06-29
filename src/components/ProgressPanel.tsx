@@ -3,9 +3,10 @@ import { getProgressSummary } from "../services/workoutService";
 
 interface ProgressPanelProps {
   refreshKey: number;
+  onBack: () => void;
 }
 
-export default function ProgressPanel({ refreshKey }: ProgressPanelProps) {
+export default function ProgressPanel({ refreshKey, onBack: _onBack }: ProgressPanelProps) {
   const summary = useMemo(() => getProgressSummary(), [refreshKey]);
 
   return (

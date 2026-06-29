@@ -4,9 +4,10 @@ import { loadWorkoutHistory } from "../storage/workoutHistory";
 
 interface HistoryPanelProps {
   refreshKey: number;
+  onBack: () => void;
 }
 
-export default function HistoryPanel({ refreshKey }: HistoryPanelProps) {
+export default function HistoryPanel({ refreshKey, onBack: _onBack }: HistoryPanelProps) {
   const history = useMemo(() => loadWorkoutHistory(), [refreshKey]);
 
   return (
@@ -56,7 +57,7 @@ export default function HistoryPanel({ refreshKey }: HistoryPanelProps) {
                     <div className="mt-2 flex flex-wrap gap-2">
                       {group.sets.map((set, index) => (
                         <span key={set.id} className="rounded-lg bg-white px-2 py-1 text-xs font-bold text-[#6B7280]">
-                          {index + 1}: {set.weightKg} kg x {set.reps}
+                          {index + 1}: {formatSetValue(set)}
                           {set.note ? ` · ${set.note}` : ""}
                         </span>
                       ))}
@@ -77,7 +78,7 @@ export default function HistoryPanel({ refreshKey }: HistoryPanelProps) {
   );
 }
 
-function groupSets(sets: Array<{ id: string; exerciseName: string; weightKg: number; reps: number; note?: string }>) {
+function groupSets(sets: Array<{ id: string; exerciseName: string; weightKg: number; reps: number; timeSeconds?: number; note?: string }>) {
   return Array.from(
     sets.reduce((groups, set) => {
       const group = groups.get(set.exerciseName) ?? { exerciseName: set.exerciseName, sets: [] as typeof sets };
@@ -86,6 +87,11 @@ function groupSets(sets: Array<{ id: string; exerciseName: string; weightKg: num
       return groups;
     }, new Map<string, { exerciseName: string; sets: typeof sets }>()),
   ).map(([, group]) => group);
+}
+
+function formatSetValue(set: { weightKg: number; reps: number; timeSeconds?: number }) {
+  const weightLabel = set.weightKg > 0 ? `${set.weightKg} kg x ` : "";
+  return set.timeSeconds ? `${weightLabel}${set.timeSeconds}s` : `${set.weightKg} kg x ${set.reps}`;
 }
 
 function formatDate(value: string) {

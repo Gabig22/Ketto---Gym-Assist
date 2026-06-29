@@ -197,7 +197,10 @@ export function discardActiveWorkout() {
 export function findLastSetForExercise(exerciseId: string): WorkoutSet | undefined {
   const history = loadWorkoutHistory();
 
-  return history.flatMap((session) => session.sets).find((set) => set.exerciseId === exerciseId);
+  return history
+    .flatMap((session) => session.sets)
+    .filter((set) => set.exerciseId === exerciseId)
+    .sort((a, b) => new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime())[0];
 }
 
 export function getSuggestedStart(exercise: Exercise) {
@@ -294,7 +297,7 @@ function normalizeWorkoutBlock(block: WorkoutBlock): WorkoutBlock {
   return {
     ...block,
     rounds: Math.max(1, block.rounds || 1),
-    restAfterRoundSeconds: block.restAfterRoundSeconds || 90,
+    restAfterRoundSeconds: block.restAfterRoundSeconds ?? 90,
     exercises: block.exercises.map(normalizeExercise),
   };
 }

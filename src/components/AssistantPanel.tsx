@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import type { AssistantView } from "../types";
 import { getSuggestedWorkoutTemplate, getWorkoutTemplates } from "../services/workoutService";
 import WorkoutChatPanel from "./WorkoutChatPanel";
@@ -29,10 +29,44 @@ export default function AssistantPanel({
   onHide,
 }: AssistantPanelProps) {
   const [activeView, setActiveView] = useState<AssistantView>("home");
+  const [viewStack, setViewStack] = useState<AssistantView[]>([]);
+  const [workoutBackRequestId, setWorkoutBackRequestId] = useState(0);
   const [refreshKey, setRefreshKey] = useState(0);
 
   function refreshStats() {
     setRefreshKey((key) => key + 1);
+  }
+
+  const navigateTo = useCallback((view: AssistantView) => {
+    setActiveView((currentView) => {
+      if (currentView === view) {
+        return currentView;
+      }
+
+      setViewStack((currentStack) => {
+        const previousView = currentStack[currentStack.length - 1];
+        return previousView === currentView ? currentStack : [...currentStack, currentView];
+      });
+
+      return view;
+    });
+  }, []);
+
+  const goBack = useCallback(() => {
+    setViewStack((currentStack) => {
+      const previousView = currentStack[currentStack.length - 1] ?? "home";
+      setActiveView(previousView);
+      return currentStack.slice(0, -1);
+    });
+  }, []);
+
+  function handleHeaderBack() {
+    if (activeView === "routine" || activeView === "free") {
+      setWorkoutBackRequestId((id) => id + 1);
+      return;
+    }
+
+    goBack();
   }
 
   return (
@@ -46,7 +80,7 @@ export default function AssistantPanel({
           <button
             type="button"
             className="no-drag flex min-w-0 items-center gap-3 text-left"
-            onClick={() => setActiveView("home")}
+            onClick={() => navigateTo("home")}
             aria-label="Volver al inicio"
           >
             <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-[#FFD5C2] text-[#1F2937] shadow-sm">
@@ -59,7 +93,10 @@ export default function AssistantPanel({
           </button>
 
           <div className="no-drag flex items-center gap-2">
-            <button className="icon-button settings" type="button" onClick={() => setActiveView("settings")} aria-label="Abrir ajustes" title="Ajustes">
+            <button className="icon-button" type="button" onClick={handleHeaderBack} aria-label="Volver atras" title="Volver atras">
+              &larr;
+            </button>
+            <button className="icon-button settings" type="button" onClick={() => navigateTo("settings")} aria-label="Abrir ajustes" title="Ajustes">
               ⚙
             </button>
             <button className="icon-button" type="button" onClick={onCollapse} aria-label="Minimizar" title="Minimizar">
@@ -90,7 +127,7 @@ export default function AssistantPanel({
                   className={`rounded-lg px-3 py-3 text-left transition ${
                     activeView === item.view ? "bg-[#FF8A5B] text-white shadow-sm" : "text-[#1F2937] hover:bg-[#E9E5FF]"
                   }`}
-                  onClick={() => setActiveView(item.view)}
+                  onClick={() => navigateTo(item.view)}
                 >
                   <span className="block text-sm font-bold">{item.label}</span>
                   <span className={`mt-0.5 block text-xs ${activeView === item.view ? "text-white/80" : "text-[#6B7280]"}`}>
@@ -103,19 +140,21 @@ export default function AssistantPanel({
 
           <section className="min-h-0 overflow-hidden bg-[#F5F6FA]">
             {activeView === "home" ? (
-              <HomePanel onSelect={setActiveView} />
+              <HomePanel onSelect={navigateTo} />
             ) : activeView === "progress" ? (
-              <ProgressPanel refreshKey={refreshKey} />
+              <ProgressPanel refreshKey={refreshKey} onBack={goBack} />
             ) : activeView === "history" ? (
-              <HistoryPanel refreshKey={refreshKey} />
+              <HistoryPanel refreshKey={refreshKey} onBack={goBack} />
             ) : activeView === "settings" ? (
-              <SettingsPanel />
+              <SettingsPanel onBack={goBack} />
             ) : (
               <WorkoutChatPanel
                 mode={activeView === "free" ? "free" : "routine"}
                 onSaved={refreshStats}
-                onGoHome={() => setActiveView("home")}
-                onViewHistory={() => setActiveView("history")}
+                onGoHome={() => navigateTo("home")}
+                onViewHistory={() => navigateTo("history")}
+                onBack={goBack}
+                backRequestId={workoutBackRequestId}
               />
             )}
           </section>
@@ -183,7 +222,7 @@ function HomePanel({ onSelect }: { onSelect: (view: AssistantView) => void }) {
   );
 }
 
-function SettingsPanel() {
+function SettingsPanel({ onBack: _onBack }: { onBack: () => void }) {
   return (
     <div className="flex h-full flex-col overflow-y-auto p-5">
       <h2 className="text-lg font-black text-[#1F2937]">Ajustes</h2>
