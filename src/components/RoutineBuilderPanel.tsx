@@ -37,6 +37,7 @@ export default function RoutineBuilderPanel({ templates, initialTemplateId, onSa
     (draft.description ?? draft.focus).trim().length > 0 &&
     Boolean(draft.blocks?.length) &&
     (draft.blocks ?? []).every(isValidBlock);
+  const draftStats = getRoutineDraftStats(draft);
 
   function selectTemplate(template: WorkoutTemplate) {
     if (hasUnsavedChanges) {
@@ -218,19 +219,20 @@ export default function RoutineBuilderPanel({ templates, initialTemplateId, onSa
 
       <div className="mt-4 grid grid-cols-3 gap-2">
         {[
-          { id: "basics", label: "1. Datos" },
-          { id: "blocks", label: "2. Bloques" },
-          { id: "review", label: "3. Revision" },
+          { id: "basics", label: "Datos", meta: draft.name || "Sin nombre" },
+          { id: "blocks", label: "Bloques", meta: `${draftStats.blockCount} bloques` },
+          { id: "review", label: "Revision", meta: canSave ? "Lista" : "Pendiente" },
         ].map((section) => (
           <button
             key={section.id}
             type="button"
-            className={`rounded-xl px-3 py-2 text-xs font-black transition ${
-              activeSection === section.id ? "bg-[#7C6CF2] text-white" : "bg-white text-[#6B7280] hover:bg-[#E9E5FF]"
+            className={`rounded-2xl border px-3 py-2 text-left transition ${
+              activeSection === section.id ? "border-[#7C6CF2] bg-[#F7F3FF]" : "border-[#E5E7EB] bg-white hover:border-[#FFD5C2]"
             }`}
             onClick={() => setActiveSection(section.id as typeof activeSection)}
           >
-            {section.label}
+            <span className={`block text-xs font-black ${activeSection === section.id ? "text-[#7C6CF2]" : "text-[#1F2937]"}`}>{section.label}</span>
+            <span className="mt-0.5 block truncate text-[11px] font-bold text-[#6B7280]">{section.meta}</span>
           </button>
         ))}
       </div>
@@ -251,6 +253,21 @@ export default function RoutineBuilderPanel({ templates, initialTemplateId, onSa
       </div>
 
       <div className="mt-4 rounded-2xl border border-[#E5E7EB] bg-white p-4 shadow-sm">
+        <div className="mb-3 flex items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-black uppercase tracking-wider text-[#7C6CF2]">Rutina seleccionada</p>
+            <h3 className="mt-1 text-base font-black text-[#1F2937]">{draft.name || "Sin nombre"}</h3>
+            <p className="mt-1 text-xs font-bold text-[#6B7280]">{draft.description ?? draft.focus}</p>
+          </div>
+          <span className={`shrink-0 rounded-full px-3 py-1 text-xs font-black ${canSave ? "bg-[#E9E5FF] text-[#7C6CF2]" : "bg-[#FFF7F3] text-[#FF8A5B]"}`}>
+            {canSave ? "Lista" : "Incompleta"}
+          </span>
+        </div>
+        <div className="mb-3 grid grid-cols-3 gap-2 text-xs font-bold text-[#6B7280]">
+          <span className="rounded-xl bg-[#F5F6FA] px-3 py-2">{draftStats.blockCount} bloques</span>
+          <span className="rounded-xl bg-[#F5F6FA] px-3 py-2">{draftStats.exerciseCount} ejercicios</span>
+          <span className="rounded-xl bg-[#F5F6FA] px-3 py-2">{draftStats.totalRounds} rondas</span>
+        </div>
         <div className="flex gap-2 overflow-x-auto pb-1">
           {localTemplates.map((template) => (
             <button
@@ -294,13 +311,15 @@ export default function RoutineBuilderPanel({ templates, initialTemplateId, onSa
       </div>
       ) : null}
 
-      <button
-        type="button"
-        className="mt-3 w-full rounded-xl border border-[#FECACA] bg-[#FFF1F2] px-3 py-2 text-sm font-bold text-[#E11D48]"
-        onClick={() => setShowDeleteRoutineConfirm(true)}
-      >
-        Eliminar rutina
-      </button>
+      {activeSection === "basics" ? (
+        <button
+          type="button"
+          className="mt-3 w-full rounded-xl border border-[#FECACA] bg-[#FFF1F2] px-3 py-2 text-sm font-bold text-[#E11D48]"
+          onClick={() => setShowDeleteRoutineConfirm(true)}
+        >
+          Eliminar rutina
+        </button>
+      ) : null}
 
       {activeSection === "blocks" ? (
       <div className="mt-4 space-y-3">
@@ -481,7 +500,7 @@ export default function RoutineBuilderPanel({ templates, initialTemplateId, onSa
 
       {message ? <p className="mt-3 rounded-xl bg-[#E9E5FF] px-3 py-2 text-sm font-bold text-[#7C6CF2]">{message}</p> : null}
 
-      <div className="mt-4 grid grid-cols-2 gap-2">
+      <div className="sticky bottom-0 -mx-5 mt-4 grid grid-cols-2 gap-2 border-t border-[#E5E7EB] bg-[#F5F6FA]/95 px-5 py-3 backdrop-blur">
         <button type="button" className="secondary-button" onClick={requestBack}>
           Cancelar
         </button>
@@ -621,6 +640,16 @@ function getBlockTypeLabel(type: WorkoutBlockType) {
   }
 
   return "Ejercicio simple";
+}
+
+function getRoutineDraftStats(template: WorkoutTemplate) {
+  const blocks = template.blocks ?? [];
+
+  return {
+    blockCount: blocks.length,
+    exerciseCount: blocks.reduce((total, block) => total + block.exercises.length, 0),
+    totalRounds: blocks.reduce((total, block) => total + block.rounds, 0),
+  };
 }
 
 function RoutineReviewCard({ draft, canSave }: { draft: WorkoutTemplate; canSave: boolean }) {

@@ -98,7 +98,7 @@ export default function AssistantPanel({
               &larr;
             </button>
             <button className="icon-button settings" type="button" onClick={() => navigateTo("settings")} aria-label="Abrir ajustes" title="Ajustes">
-              ⚙
+              {"\u2699"}
             </button>
             <button className="icon-button" type="button" onClick={onCollapse} aria-label="Minimizar" title="Minimizar">
               —
@@ -171,7 +171,7 @@ function HomePanel({ onSelect }: { onSelect: (view: AssistantView) => void }) {
   return (
     <div className="flex h-full flex-col overflow-y-auto p-5">
       <div className="rounded-2xl border border-[#E5E7EB] bg-white p-5 shadow-sm">
-        <div className="inline-flex rounded-full bg-[#E9E5FF] px-3 py-1 text-xs font-bold text-[#7C6CF2]">✓ Listo para entrenar</div>
+        <div className="inline-flex rounded-full bg-[#E9E5FF] px-3 py-1 text-xs font-bold text-[#7C6CF2]">{"\u2713"} Listo para entrenar</div>
         <p className="mt-4 text-xl font-black leading-7 text-[#1F2937]">
           Buenas Gabi, soy Ketto.
           <br />
@@ -234,7 +234,8 @@ function SettingsPanel({ onBack: _onBack }: { onBack: () => void }) {
         <p className="mt-1 text-sm leading-6 text-[#6B7280]">Configura lo que Ketto usa para crear ejercicios, rutinas y entrenamientos.</p>
       </div>
 
-      <div className="mt-4 grid grid-cols-2 gap-2">
+      <div className="mt-4 rounded-2xl border border-[#E5E7EB] bg-white p-1.5 shadow-sm">
+        <div className="grid grid-cols-2 gap-1.5">
         {[
           { id: "gym", label: "Mi gimnasio", text: "Elementos" },
           { id: "library", label: "Biblioteca", text: "Ejercicios" },
@@ -244,15 +245,16 @@ function SettingsPanel({ onBack: _onBack }: { onBack: () => void }) {
           <button
             key={section.id}
             type="button"
-            className={`rounded-2xl border px-3 py-3 text-left transition ${
-              activeSection === section.id ? "border-[#7C6CF2] bg-[#F7F3FF]" : "border-[#E5E7EB] bg-white hover:border-[#FFD5C2]"
+            className={`rounded-xl px-3 py-2.5 text-left transition ${
+              activeSection === section.id ? "bg-[#F7F3FF]" : "hover:bg-[#FFF7F3]"
             }`}
             onClick={() => setActiveSection(section.id as typeof activeSection)}
           >
-            <span className="block text-sm font-black text-[#1F2937]">{section.label}</span>
+            <span className={`block text-sm font-black ${activeSection === section.id ? "text-[#7C6CF2]" : "text-[#1F2937]"}`}>{section.label}</span>
             <span className="mt-1 block text-xs font-bold text-[#6B7280]">{section.text}</span>
           </button>
         ))}
+        </div>
       </div>
 
       <div className="mt-4">

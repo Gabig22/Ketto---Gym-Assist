@@ -277,22 +277,6 @@ export default function ExerciseLibraryPanel() {
               </div>
             );
           })}
-
-          {false && filteredLibrary.map((exercise) => (
-            <button
-              key={exercise.id}
-              type="button"
-              className={`rounded-2xl border p-3 text-left transition ${
-                exercise.id === draft.id ? "border-[#7C6CF2] bg-[#F7F3FF]" : "border-[#E5E7EB] bg-[#F5F6FA] hover:border-[#FFD5C2] hover:bg-[#FFF7F3]"
-              }`}
-              onClick={() => selectExercise(exercise)}
-            >
-              <span className="block text-sm font-black text-[#1F2937]">{exercise.name || "Ejercicio sin nombre"}</span>
-              <span className="mt-1 block text-xs font-bold text-[#6B7280]">
-                {exercise.bodyGroup} · {exercise.primaryMuscle} · {getEquipmentLabel(exercise, equipment) || "Sin elemento"} · {getExerciseTypeLabel(exercise.type)}
-              </span>
-            </button>
-          ))}
         </div>
       )}
 

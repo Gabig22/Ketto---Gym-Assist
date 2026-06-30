@@ -202,28 +202,6 @@ export default function GymEquipmentPanel() {
               </div>
             );
           })}
-
-          {false && filteredEquipment.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              className={`rounded-2xl border p-3 text-left transition ${
-                item.id === draft.id ? "border-[#7C6CF2] bg-[#F7F3FF]" : "border-[#E5E7EB] bg-[#F5F6FA] hover:border-[#FFD5C2] hover:bg-[#FFF7F3]"
-              }`}
-              onClick={() => selectItem(item)}
-            >
-              <span className="flex items-center justify-between gap-3">
-                <span className="text-sm font-black text-[#1F2937]">{item.name || "Elemento sin nombre"}</span>
-                <span className={`rounded-full px-2 py-1 text-[11px] font-black ${item.isActive ? "bg-[#E9E5FF] text-[#7C6CF2]" : "bg-[#F5F6FA] text-[#6B7280]"}`}>
-                  {item.isActive ? "Activo" : "Inactivo"}
-                </span>
-              </span>
-              <span className="mt-1 block text-xs font-bold text-[#6B7280]">
-                {item.type}
-                {item.weightRange ? ` · ${item.weightRange}${item.unit ? ` ${item.unit}` : ""}` : ""}
-              </span>
-            </button>
-          ))}
         </div>
       )}
 
