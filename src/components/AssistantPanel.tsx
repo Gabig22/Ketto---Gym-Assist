@@ -5,6 +5,7 @@ import WorkoutChatPanel from "./WorkoutChatPanel";
 import ProgressPanel from "./ProgressPanel";
 import HistoryPanel from "./HistoryPanel";
 import ExerciseLibraryPanel from "./ExerciseLibraryPanel";
+import GymEquipmentPanel from "./GymEquipmentPanel";
 
 interface AssistantPanelProps {
   isMaximized: boolean;
@@ -15,7 +16,7 @@ interface AssistantPanelProps {
 }
 
 const primaryActions: Array<{ view: AssistantView; label: string; caption: string }> = [
-  { view: "routine", label: "Iniciar rutina", caption: "Dia A, B o C" },
+  { view: "routine", label: "Rutinas", caption: "Crear, editar y entrenar" },
   { view: "free", label: "Entreno libre", caption: "Cargar sin plan" },
   { view: "progress", label: "Ver progreso", caption: "Resumen simple" },
   { view: "history", label: "Historial", caption: "Sesiones guardadas" },
@@ -184,20 +185,20 @@ function HomePanel({ onSelect }: { onSelect: (view: AssistantView) => void }) {
           className="mt-5 w-full rounded-2xl bg-[#FF8A5B] px-4 py-3 text-sm font-bold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-[#f97845] hover:shadow-md active:translate-y-0 active:shadow-sm"
           onClick={() => onSelect("routine")}
         >
-          Iniciar rutina
+          Rutinas
         </button>
       </div>
 
       {suggestedTemplate ? (
-        <div className="mt-4 rounded-[22px] border-2 border-[#CBBFFF] bg-gradient-to-br from-[#F7F3FF] via-white to-[#F7F3FF] p-4 shadow-[0_14px_34px_rgba(124,108,242,0.12)]">
-          <div className="inline-flex rounded-full bg-white px-3 py-1 text-xs font-black uppercase tracking-wider text-[#7C6CF2] shadow-sm">
+        <div className="mt-4 rounded-2xl border border-[#CBBFFF] bg-gradient-to-br from-[#F7F3FF] via-white to-[#F7F3FF] px-4 py-3 shadow-[0_10px_24px_rgba(124,108,242,0.1)]">
+          <div className="inline-flex rounded-full bg-white px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wide text-[#7C6CF2] shadow-sm">
             Recomendada
           </div>
-          <h3 className="mt-2 text-lg font-black text-[#1F2937]">{suggestedTemplate.name}</h3>
-          <p className="mt-1 text-sm text-[#6B7280]">{suggestedTemplate.description ?? suggestedTemplate.focus}</p>
+          <h3 className="mt-2 text-base font-black text-[#1F2937]">{suggestedTemplate.name}</h3>
+          <p className="mt-0.5 text-xs font-bold text-[#6B7280]">{suggestedTemplate.description ?? suggestedTemplate.focus}</p>
           <button
             type="button"
-            className="mt-4 w-full rounded-xl bg-[#7C6CF2] px-3 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-[#6757E8]"
+            className="mt-3 w-full rounded-xl bg-[#7C6CF2] px-3 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-[#6757E8]"
             onClick={() => onSelect("routine")}
           >
             Arrancar ahora
@@ -223,14 +224,56 @@ function HomePanel({ onSelect }: { onSelect: (view: AssistantView) => void }) {
 }
 
 function SettingsPanel({ onBack: _onBack }: { onBack: () => void }) {
+  const [activeSection, setActiveSection] = useState<"gym" | "library" | "routines" | "preferences">("gym");
+
   return (
     <div className="flex h-full flex-col overflow-y-auto p-5">
-      <h2 className="text-lg font-black text-[#1F2937]">Ajustes</h2>
-      <div className="mt-4 rounded-2xl border border-[#E5E7EB] bg-white p-4 text-sm leading-6 text-[#6B7280] shadow-sm">
-        <p className="font-bold text-[#1F2937]">Version MVP local.</p>
-        <p className="mt-2">Sin backend, login, IA ni integraciones externas. Los entrenamientos se guardan en este equipo con localStorage.</p>
+      <div>
+        <p className="text-xs font-black uppercase tracking-wider text-[#7C6CF2]">Centro de configuracion</p>
+        <h2 className="mt-1 text-lg font-black text-[#1F2937]">Ajustes</h2>
+        <p className="mt-1 text-sm leading-6 text-[#6B7280]">Configura lo que Ketto usa para crear ejercicios, rutinas y entrenamientos.</p>
       </div>
-      <ExerciseLibraryPanel />
+
+      <div className="mt-4 grid grid-cols-2 gap-2">
+        {[
+          { id: "gym", label: "Mi gimnasio", text: "Elementos" },
+          { id: "library", label: "Biblioteca", text: "Ejercicios" },
+          { id: "routines", label: "Rutinas", text: "Crear y editar" },
+          { id: "preferences", label: "Preferencias", text: "Local" },
+        ].map((section) => (
+          <button
+            key={section.id}
+            type="button"
+            className={`rounded-2xl border px-3 py-3 text-left transition ${
+              activeSection === section.id ? "border-[#7C6CF2] bg-[#F7F3FF]" : "border-[#E5E7EB] bg-white hover:border-[#FFD5C2]"
+            }`}
+            onClick={() => setActiveSection(section.id as typeof activeSection)}
+          >
+            <span className="block text-sm font-black text-[#1F2937]">{section.label}</span>
+            <span className="mt-1 block text-xs font-bold text-[#6B7280]">{section.text}</span>
+          </button>
+        ))}
+      </div>
+
+      <div className="mt-4">
+        {activeSection === "gym" ? (
+          <GymEquipmentPanel />
+        ) : activeSection === "library" ? (
+          <ExerciseLibraryPanel />
+        ) : activeSection === "routines" ? (
+          <div className="rounded-2xl border border-[#E5E7EB] bg-white p-4 shadow-sm">
+            <p className="text-xs font-black uppercase tracking-wider text-[#7C6CF2]">Ajustes &gt; Rutinas</p>
+            <h3 className="mt-1 text-base font-black text-[#1F2937]">Rutinas</h3>
+            <p className="mt-2 text-sm leading-6 text-[#6B7280]">Para crear o editar rutinas, entra en Rutinas y toca Crear / editar rutinas.</p>
+          </div>
+        ) : (
+          <div className="rounded-2xl border border-[#E5E7EB] bg-white p-4 text-sm leading-6 text-[#6B7280] shadow-sm">
+            <p className="text-xs font-black uppercase tracking-wider text-[#7C6CF2]">Ajustes &gt; Preferencias</p>
+            <p className="mt-2 font-bold text-[#1F2937]">Version MVP local.</p>
+            <p className="mt-2">Sin backend, login, IA ni integraciones externas. Los entrenamientos se guardan en este equipo con localStorage.</p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

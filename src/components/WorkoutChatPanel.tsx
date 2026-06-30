@@ -393,10 +393,10 @@ export default function WorkoutChatPanel({ mode, onSaved, onGoHome, onViewHistor
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="font-bold text-[#1F2937]">
-                {mode === "free" ? "Entreno libre" : "Elijo rutina y arrancamos"}
+                {mode === "free" ? "Entreno libre" : "Rutinas"}
               </p>
               <p className="mt-2 text-sm leading-6 text-[#6B7280]">
-                Ketto guarda todo localmente para que despues puedas mirar historial y progreso.
+                {mode === "free" ? "Ketto guarda todo localmente para que despues puedas mirar historial y progreso." : "Elegi una rutina, creala o editala antes de entrenar."}
               </p>
             </div>
           </div>
@@ -712,18 +712,18 @@ function SuggestedRoutineCard({
   const lastSession = getLastSessionForTemplate(template.id);
 
   return (
-    <article className="rounded-[22px] border-2 border-[#CBBFFF] bg-gradient-to-br from-[#F7F3FF] via-white to-[#F7F3FF] p-4 shadow-[0_14px_34px_rgba(124,108,242,0.12)]">
-      <div className="inline-flex rounded-full bg-white px-3 py-1 text-xs font-black uppercase tracking-wider text-[#7C6CF2] shadow-sm">
+    <article className="rounded-2xl border border-[#CBBFFF] bg-gradient-to-br from-[#F7F3FF] via-white to-[#F7F3FF] px-4 py-3 shadow-[0_10px_24px_rgba(124,108,242,0.1)]">
+      <div className="inline-flex rounded-full bg-white px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wide text-[#7C6CF2] shadow-sm">
         Sugerida para hoy
       </div>
-      <h3 className="mt-2 text-lg font-black text-[#1F2937]">{template.name}</h3>
-      <p className="mt-1 text-sm font-medium text-[#6B7280]">{template.description ?? template.focus}</p>
-      <p className="mt-3 text-xs font-bold text-[#6B7280]">
+      <h3 className="mt-2 text-base font-black text-[#1F2937]">{template.name}</h3>
+      <p className="mt-0.5 text-xs font-bold text-[#6B7280]">{template.description ?? template.focus}</p>
+      <p className="mt-2 text-xs font-bold text-[#6B7280]">
         {lastSession ? `Ultima vez: ${formatShortDate(lastSession.completedAt ?? lastSession.startedAt)}` : "Todavia no tiene historial"}
       </p>
       <button
         type="button"
-        className="mt-4 w-full rounded-xl bg-[#7C6CF2] px-3 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-[#6757E8]"
+        className="mt-3 w-full rounded-xl bg-[#7C6CF2] px-3 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-[#6757E8]"
         onClick={() => onStart(template)}
       >
         Arrancar ahora

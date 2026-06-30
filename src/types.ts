@@ -14,6 +14,7 @@ export interface Exercise {
   bodyGroup?: string;
   primaryMuscle?: string;
   equipment?: string;
+  equipmentIds?: string[];
   exerciseType?: "strength" | "time" | "cardio" | "mobility";
   targetSets: number;
   repRange: string;
@@ -31,12 +32,23 @@ export interface ExerciseLibraryItem {
   bodyGroup: string;
   primaryMuscle: string;
   equipment?: string;
+  equipmentIds?: string[];
   type?: "strength" | "time" | "cardio" | "mobility";
   notes?: string;
   targetRepsMin?: number;
   targetRepsMax?: number;
   targetTimeSeconds?: number;
   suggestedWeightKg?: number;
+}
+
+export interface GymEquipmentItem {
+  id: string;
+  name: string;
+  type: string;
+  weightRange?: string;
+  unit?: string;
+  notes?: string;
+  isActive: boolean;
 }
 
 export type WorkoutBlockType = "single" | "superset" | "circuit";

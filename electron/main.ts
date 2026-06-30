@@ -1,4 +1,5 @@
 import { app, BrowserWindow, Menu, nativeImage, Tray, ipcMain, screen, shell } from "electron";
+import fs from "node:fs";
 import path from "node:path";
 
 type AssistantMode = "collapsed" | "expanded" | "maximized";
@@ -12,6 +13,55 @@ let tray: Tray | null = null;
 let currentMode: AssistantMode = "collapsed";
 
 const isDev = process.env.NODE_ENV !== "production" && !app.isPackaged;
+const appDataName = isDev ? "Ketto Gym Assistant Dev" : "Ketto Gym Assistant";
+const legacyUserDataPath = app.getPath("userData");
+const userDataPath = path.join(app.getPath("appData"), appDataName);
+const cachePath = path.join(userDataPath, "Cache");
+
+app.setName("Ketto Gym Assistant");
+if (process.platform === "win32") {
+  app.setAppUserModelId("com.gabi.ketto-gym-assistant");
+}
+app.setPath("userData", userDataPath);
+app.setPath("cache", cachePath);
+
+try {
+  fs.mkdirSync(cachePath, { recursive: true });
+} catch {
+  // Chromium will retry cache creation. The app can still run without disk cache.
+}
+
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
+
+if (!hasSingleInstanceLock) {
+  app.quit();
+}
+
+app.on("second-instance", () => {
+  if (mainWindow) {
+    showAssistant("collapsed");
+  }
+});
+
+function migrateLocalStorageIfNeeded() {
+  if (legacyUserDataPath === userDataPath) {
+    return;
+  }
+
+  const legacyLocalStoragePath = path.join(legacyUserDataPath, "Local Storage");
+  const nextLocalStoragePath = path.join(userDataPath, "Local Storage");
+
+  try {
+    if (!fs.existsSync(legacyLocalStoragePath) || fs.existsSync(nextLocalStoragePath)) {
+      return;
+    }
+
+    fs.mkdirSync(userDataPath, { recursive: true });
+    fs.cpSync(legacyLocalStoragePath, nextLocalStoragePath, { recursive: true });
+  } catch {
+    // Keep user data untouched if Windows has the previous storage locked.
+  }
+}
 
 function createTrayIcon() {
   const svg = `
@@ -128,6 +178,7 @@ function showAssistant(mode: AssistantMode = "collapsed") {
 
 function createWindow() {
   const workArea = screen.getPrimaryDisplay().workArea;
+  currentMode = "collapsed";
 
   mainWindow = new BrowserWindow({
     width: COLLAPSED_SIZE.width,
@@ -184,7 +235,10 @@ function createTray() {
   tray.on("click", () => showAssistant("collapsed"));
 }
 
+if (hasSingleInstanceLock) {
 app.whenReady().then(() => {
+  migrateLocalStorageIfNeeded();
+
   ipcMain.handle("assistant:set-mode", (_event, mode: AssistantMode) => {
     setAssistantMode(mode);
     return mode;
@@ -219,6 +273,7 @@ app.whenReady().then(() => {
     }
   });
 });
+}
 
 app.on("window-all-closed", () => {
   // Keep the tray alive when the assistant window is hidden or closed.

@@ -1,8 +1,9 @@
 import { useMemo, useState } from "react";
-import type { Exercise, ExerciseLibraryItem, WorkoutBlock, WorkoutBlockType, WorkoutTemplate } from "../types";
+import type { Exercise, ExerciseLibraryItem, GymEquipmentItem, WorkoutBlock, WorkoutBlockType, WorkoutTemplate } from "../types";
 import { normalizeWorkoutTemplate, saveWorkoutTemplates } from "../services/workoutService";
-import { bodyGroups } from "./ExerciseLibraryPanel";
+import { bodyGroups, exerciseTypes } from "./ExerciseLibraryPanel";
 import { loadExerciseLibrary, saveExerciseLibrary } from "../storage/exerciseLibrary";
+import { createGymEquipmentFromName, loadGymEquipment, saveGymEquipment } from "../storage/gymEquipment";
 
 interface RoutineBuilderPanelProps {
   templates: WorkoutTemplate[];
@@ -19,11 +20,17 @@ export default function RoutineBuilderPanel({ templates, initialTemplateId, onSa
   const [draft, setDraft] = useState<WorkoutTemplate>(() => normalizeWorkoutTemplate(selectedTemplate ?? createEmptyTemplate()));
   const [message, setMessage] = useState("");
   const [exerciseLibrary, setExerciseLibrary] = useState<ExerciseLibraryItem[]>(() => loadExerciseLibrary());
+  const [equipment, setEquipment] = useState<GymEquipmentItem[]>(() => loadGymEquipment());
   const [selectorTarget, setSelectorTarget] = useState<{ blockIndex: number; exerciseIndex: number } | null>(null);
   const [expandedBlockIds, setExpandedBlockIds] = useState<string[]>([]);
   const [editingBlockId, setEditingBlockId] = useState<string | null>(null);
   const [blockNameDraft, setBlockNameDraft] = useState("");
   const [showDeleteRoutineConfirm, setShowDeleteRoutineConfirm] = useState(false);
+  const [showUnsavedConfirm, setShowUnsavedConfirm] = useState(false);
+  const [builderMode, setBuilderMode] = useState<"simple" | "advanced">("simple");
+  const [activeSection, setActiveSection] = useState<"basics" | "blocks" | "review">("basics");
+  const savedDraftSnapshot = selectedTemplate ? JSON.stringify(normalizeWorkoutTemplate(selectedTemplate)) : "";
+  const hasUnsavedChanges = JSON.stringify(draft) !== savedDraftSnapshot;
 
   const canSave =
     draft.name.trim().length > 0 &&
@@ -32,6 +39,11 @@ export default function RoutineBuilderPanel({ templates, initialTemplateId, onSa
     (draft.blocks ?? []).every(isValidBlock);
 
   function selectTemplate(template: WorkoutTemplate) {
+    if (hasUnsavedChanges) {
+      setShowUnsavedConfirm(true);
+      return;
+    }
+
     const normalizedTemplate = normalizeWorkoutTemplate(template);
     setSelectedId(template.id);
     setDraft(normalizedTemplate);
@@ -39,11 +51,17 @@ export default function RoutineBuilderPanel({ templates, initialTemplateId, onSa
   }
 
   function createRoutine() {
+    if (hasUnsavedChanges) {
+      setShowUnsavedConfirm(true);
+      return;
+    }
+
     const nextTemplate = createEmptyTemplate();
     setLocalTemplates((current) => [...current, nextTemplate]);
     setSelectedId(nextTemplate.id);
     setDraft(nextTemplate);
     setMessage("Rutina nueva creada. Completa los datos y guarda.");
+    setActiveSection("basics");
   }
 
   function updateBlock(index: number, updates: Partial<WorkoutBlock>) {
@@ -131,6 +149,7 @@ export default function RoutineBuilderPanel({ templates, initialTemplateId, onSa
     saveWorkoutTemplates(nextTemplates);
     onSaved(nextTemplates);
     setMessage("Cambios guardados.");
+    setActiveSection("review");
   }
 
   function deleteCurrentRoutine() {
@@ -170,16 +189,65 @@ export default function RoutineBuilderPanel({ templates, initialTemplateId, onSa
     setBlockNameDraft("");
   }
 
+  function requestBack() {
+    if (hasUnsavedChanges) {
+      setShowUnsavedConfirm(true);
+      return;
+    }
+
+    onBack();
+  }
+
+  function discardChangesAndBack() {
+    setShowUnsavedConfirm(false);
+    onBack();
+  }
+
   return (
     <div className="flex h-full flex-col overflow-y-auto p-5">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-lg font-black text-[#1F2937]">Crear / editar rutinas</h2>
-          <p className="mt-1 text-sm text-[#6B7280]">Rutinas con ejercicios simples, superseries y circuitos.</p>
+          <p className="text-xs font-black uppercase tracking-wider text-[#7C6CF2]">Rutinas &gt; Editar rutina</p>
+          <h2 className="mt-1 text-lg font-black text-[#1F2937]">Crear / editar rutinas</h2>
+          <p className="mt-1 text-sm text-[#6B7280]">Rutinas con secciones claras, bloques y ejercicios reutilizables.</p>
         </div>
-        <button type="button" className="secondary-button shrink-0" onClick={onBack}>
+        <button type="button" className="secondary-button shrink-0" onClick={requestBack}>
           Volver
         </button>
+      </div>
+
+      <div className="mt-4 grid grid-cols-3 gap-2">
+        {[
+          { id: "basics", label: "1. Datos" },
+          { id: "blocks", label: "2. Bloques" },
+          { id: "review", label: "3. Revision" },
+        ].map((section) => (
+          <button
+            key={section.id}
+            type="button"
+            className={`rounded-xl px-3 py-2 text-xs font-black transition ${
+              activeSection === section.id ? "bg-[#7C6CF2] text-white" : "bg-white text-[#6B7280] hover:bg-[#E9E5FF]"
+            }`}
+            onClick={() => setActiveSection(section.id as typeof activeSection)}
+          >
+            {section.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="mt-3 flex rounded-2xl border border-[#E5E7EB] bg-white p-1 shadow-sm">
+        {(["simple", "advanced"] as const).map((mode) => (
+          <button
+            key={mode}
+            type="button"
+            className={`flex-1 rounded-xl px-3 py-2 text-sm font-black transition ${
+              builderMode === mode ? "bg-[#FF8A5B] text-white" : "text-[#6B7280] hover:bg-[#FFF7F3]"
+            }`}
+            onClick={() => setBuilderMode(mode)}
+          >
+            {mode === "simple" ? "Modo simple" : "Modo avanzado"}
+          </button>
+        ))}
       </div>
 
       <div className="mt-4 rounded-2xl border border-[#E5E7EB] bg-white p-4 shadow-sm">
@@ -202,7 +270,9 @@ export default function RoutineBuilderPanel({ templates, initialTemplateId, onSa
         </div>
       </div>
 
+      {activeSection === "basics" ? (
       <div className="mt-4 rounded-2xl border border-[#E5E7EB] bg-white p-4 shadow-sm">
+        <p className="mb-3 text-sm font-black text-[#1F2937]">Paso 1 · Datos basicos</p>
         <label className="field-label">
           Nombre de rutina
           <input className="field-input" value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
@@ -215,7 +285,14 @@ export default function RoutineBuilderPanel({ templates, initialTemplateId, onSa
             onChange={(event) => setDraft({ ...draft, description: event.target.value, focus: event.target.value })}
           />
         </label>
+        {builderMode === "advanced" ? (
+          <label className="field-label mt-3">
+            Objetivo opcional
+            <input className="field-input" placeholder="Fuerza, hipertrofia, movilidad..." value={draft.focus} onChange={(event) => setDraft({ ...draft, focus: event.target.value })} />
+          </label>
+        ) : null}
       </div>
+      ) : null}
 
       <button
         type="button"
@@ -225,7 +302,16 @@ export default function RoutineBuilderPanel({ templates, initialTemplateId, onSa
         Eliminar rutina
       </button>
 
+      {activeSection === "blocks" ? (
       <div className="mt-4 space-y-3">
+        {(draft.blocks ?? []).length === 0 ? (
+          <EmptyState
+            title="No hay bloques todavia."
+            text="Agrega un bloque simple para empezar o arma una superserie/circuito."
+            action="Agregar bloque"
+            onAction={addBlock}
+          />
+        ) : null}
         {(draft.blocks ?? []).map((block, blockIndex) => (
           <article key={block.id} className="rounded-[22px] border-2 border-[#E9E5FF] bg-[#FBFAFF] p-4 shadow-sm">
             <div className="rounded-2xl border border-[#E5E7EB] bg-white p-3">
@@ -278,7 +364,7 @@ export default function RoutineBuilderPanel({ templates, initialTemplateId, onSa
               </div>
             </div>
 
-            {expandedBlockIds.includes(block.id) ? (
+            {expandedBlockIds.includes(block.id) || builderMode === "advanced" ? (
             <div className="mt-3 grid grid-cols-2 gap-3 rounded-2xl border border-[#E5E7EB] bg-white p-3">
               <label className="field-label">
                 Tipo
@@ -302,6 +388,7 @@ export default function RoutineBuilderPanel({ templates, initialTemplateId, onSa
                   onChange={(event) => updateBlock(blockIndex, { restAfterRoundSeconds: positiveInt(event.target.value, block.restAfterRoundSeconds) })}
                 />
               </label>
+              {builderMode === "advanced" ? (
               <label className="field-label">
                 Descanso ejercicios
                 <input
@@ -316,6 +403,7 @@ export default function RoutineBuilderPanel({ templates, initialTemplateId, onSa
                   }
                 />
               </label>
+              ) : null}
             </div>
             ) : null}
 
@@ -346,10 +434,12 @@ export default function RoutineBuilderPanel({ templates, initialTemplateId, onSa
                   >
                     {exercise.name ? `${exercise.name} · ${exercise.muscleGroup}` : "Seleccionar ejercicio"}
                   </button>
+                  {builderMode === "advanced" ? (
                   <label className="field-label mt-3">
                     Grupo muscular
                     <input className="field-input" value={exercise.muscleGroup} onChange={(event) => updateExercise(blockIndex, exerciseIndex, { muscleGroup: event.target.value })} />
                   </label>
+                  ) : null}
                   <div className="mt-3 grid grid-cols-2 gap-3">
                     <label className="field-label">
                       Reps min
@@ -363,10 +453,12 @@ export default function RoutineBuilderPanel({ templates, initialTemplateId, onSa
                       Tiempo seg
                       <input className="field-input" type="number" min="0" value={exercise.targetTimeSeconds ?? ""} onChange={(event) => updateExercise(blockIndex, exerciseIndex, { targetTimeSeconds: event.target.value === "" ? undefined : positiveInt(event.target.value, exercise.targetTimeSeconds ?? 0) })} />
                     </label>
+                    {builderMode === "advanced" ? (
                     <label className="field-label">
                       Peso sugerido
                       <input className="field-input" type="number" min="0" step="0.5" value={exercise.suggestedWeightKg ?? exercise.previousWeightKg ?? ""} onChange={(event) => updateExercise(blockIndex, exerciseIndex, { suggestedWeightKg: event.target.value === "" ? undefined : positiveNumber(event.target.value, exercise.suggestedWeightKg ?? 0), previousWeightKg: event.target.value === "" ? undefined : positiveNumber(event.target.value, exercise.previousWeightKg ?? 0) })} />
                     </label>
+                    ) : null}
                   </div>
                 </div>
               ))}
@@ -377,16 +469,20 @@ export default function RoutineBuilderPanel({ templates, initialTemplateId, onSa
             </button>
           </article>
         ))}
+        <button type="button" className="mt-4 w-full rounded-2xl border border-[#FFD5C2] bg-[#FFF7F3] px-4 py-3 text-sm font-bold text-[#FF8A5B]" onClick={addBlock}>
+          Agregar bloque
+        </button>
       </div>
+      ) : null}
 
-      <button type="button" className="mt-4 rounded-2xl border border-[#FFD5C2] bg-[#FFF7F3] px-4 py-3 text-sm font-bold text-[#FF8A5B]" onClick={addBlock}>
-        Agregar bloque
-      </button>
+      {activeSection === "review" ? (
+        <RoutineReviewCard draft={draft} canSave={canSave} />
+      ) : null}
 
       {message ? <p className="mt-3 rounded-xl bg-[#E9E5FF] px-3 py-2 text-sm font-bold text-[#7C6CF2]">{message}</p> : null}
 
       <div className="mt-4 grid grid-cols-2 gap-2">
-        <button type="button" className="secondary-button" onClick={onBack}>
+        <button type="button" className="secondary-button" onClick={requestBack}>
           Cancelar
         </button>
         <button
@@ -402,6 +498,7 @@ export default function RoutineBuilderPanel({ templates, initialTemplateId, onSa
       {selectorTarget ? (
         <ExerciseSelectorModal
           library={exerciseLibrary}
+          equipment={equipment}
           onClose={() => setSelectorTarget(null)}
           onCreate={(item) => {
             const nextLibrary = [item, ...exerciseLibrary];
@@ -414,6 +511,10 @@ export default function RoutineBuilderPanel({ templates, initialTemplateId, onSa
             updateExerciseFromLibrary(selectorTarget.blockIndex, selectorTarget.exerciseIndex, item);
             setSelectorTarget(null);
           }}
+          onEquipmentCreated={(nextEquipment) => {
+            setEquipment(nextEquipment);
+            saveGymEquipment(nextEquipment);
+          }}
         />
       ) : null}
       {showDeleteRoutineConfirm ? (
@@ -421,6 +522,13 @@ export default function RoutineBuilderPanel({ templates, initialTemplateId, onSa
           routineName={draft.name}
           onCancel={() => setShowDeleteRoutineConfirm(false)}
           onDelete={deleteCurrentRoutine}
+        />
+      ) : null}
+      {showUnsavedConfirm ? (
+        <UnsavedChangesModal
+          onSave={saveDraft}
+          onDiscard={discardChangesAndBack}
+          onContinue={() => setShowUnsavedConfirm(false)}
         />
       ) : null}
     </div>
@@ -432,6 +540,7 @@ export default function RoutineBuilderPanel({ templates, initialTemplateId, onSa
       name: item.name,
       muscleGroup: item.bodyGroup,
       equipment: item.equipment,
+      equipmentIds: item.equipmentIds,
       bodyGroup: item.bodyGroup,
       primaryMuscle: item.primaryMuscle,
       exerciseType: item.type,
@@ -514,29 +623,114 @@ function getBlockTypeLabel(type: WorkoutBlockType) {
   return "Ejercicio simple";
 }
 
+function RoutineReviewCard({ draft, canSave }: { draft: WorkoutTemplate; canSave: boolean }) {
+  const blocks = draft.blocks ?? [];
+  const exerciseCount = blocks.reduce((total, block) => total + block.exercises.length, 0);
+  const totalRounds = blocks.reduce((total, block) => total + block.rounds, 0);
+
+  return (
+    <section className="mt-4 rounded-2xl border border-[#E5E7EB] bg-white p-4 shadow-sm">
+      <p className="text-sm font-black text-[#1F2937]">Paso 3 · Revision final</p>
+      <p className="mt-2 text-sm leading-6 text-[#6B7280]">Chequea la rutina antes de guardar.</p>
+      <div className="mt-4 grid grid-cols-2 gap-2 text-xs font-bold text-[#6B7280]">
+        <span className="rounded-xl bg-[#F5F6FA] px-3 py-2">{blocks.length} bloques</span>
+        <span className="rounded-xl bg-[#F5F6FA] px-3 py-2">{exerciseCount} ejercicios</span>
+        <span className="rounded-xl bg-[#F5F6FA] px-3 py-2">{totalRounds} rondas totales</span>
+        <span className="rounded-xl bg-[#F5F6FA] px-3 py-2">{canSave ? "Lista para guardar" : "Faltan datos"}</span>
+      </div>
+      <div className="mt-4 space-y-2">
+        {blocks.map((block) => (
+          <div key={block.id} className="rounded-xl border border-[#E5E7EB] bg-[#FBFAFF] p-3">
+            <p className="text-sm font-black text-[#1F2937]">{block.name}</p>
+            <p className="mt-1 text-xs font-bold text-[#6B7280]">
+              {getBlockTypeLabel(block.type)} · {block.rounds} rondas · descanso {block.restAfterRoundSeconds}s
+            </p>
+            <p className="mt-2 text-xs text-[#6B7280]">{block.exercises.map((exercise) => exercise.name || "Ejercicio sin nombre").join(", ")}</p>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function EmptyState({ title, text, action, onAction }: { title: string; text: string; action: string; onAction: () => void }) {
+  return (
+    <div className="rounded-2xl border border-dashed border-[#FFD5C2] bg-[#FFF7F3] p-4 text-center">
+      <p className="text-sm font-black text-[#1F2937]">{title}</p>
+      <p className="mt-2 text-sm leading-6 text-[#6B7280]">{text}</p>
+      <button type="button" className="mt-3 rounded-xl bg-[#FF8A5B] px-3 py-3 text-sm font-bold text-white" onClick={onAction}>
+        {action}
+      </button>
+    </div>
+  );
+}
+
+function ensureEquipmentByName(name: string, currentEquipment: GymEquipmentItem[]) {
+  if (!name) {
+    return { equipment: currentEquipment, item: undefined };
+  }
+
+  const existingItem = currentEquipment.find((item) => item.name.toLowerCase() === name.toLowerCase());
+
+  if (existingItem) {
+    return { equipment: currentEquipment, item: existingItem };
+  }
+
+  const nextItem = createGymEquipmentFromName(name);
+  return { equipment: [nextItem, ...currentEquipment], item: nextItem };
+}
+
+function getEquipmentLabel(exercise: ExerciseLibraryItem, equipment: GymEquipmentItem[]) {
+  const names = (exercise.equipmentIds ?? [])
+    .map((id) => equipment.find((item) => item.id === id)?.name)
+    .filter(Boolean);
+
+  return names.length ? names.join(", ") : exercise.equipment ?? "";
+}
+
+function getExerciseTypeLabel(type?: ExerciseLibraryItem["type"]) {
+  return exerciseTypes.find((item) => item.value === type)?.label ?? "Fuerza";
+}
+
 function ExerciseSelectorModal({
   library,
+  equipment,
   onClose,
   onSelect,
   onCreate,
+  onEquipmentCreated,
 }: {
   library: ExerciseLibraryItem[];
+  equipment: GymEquipmentItem[];
   onClose: () => void;
   onSelect: (item: ExerciseLibraryItem) => void;
   onCreate: (item: ExerciseLibraryItem) => void;
+  onEquipmentCreated: (equipment: GymEquipmentItem[]) => void;
 }) {
   const [query, setQuery] = useState("");
   const [group, setGroup] = useState("Todos");
+  const [muscle, setMuscle] = useState("Todos");
+  const [equipmentId, setEquipmentId] = useState("Todos");
+  const [onlyAvailable, setOnlyAvailable] = useState(false);
   const [newName, setNewName] = useState("");
   const [newMuscle, setNewMuscle] = useState("");
   const [newEquipment, setNewEquipment] = useState("");
+  const activeEquipmentIds = new Set(equipment.filter((item) => item.isActive).map((item) => item.id));
+  const muscles = Array.from(new Set(library.map((item) => item.primaryMuscle).filter(Boolean)));
   const filteredLibrary = library.filter((item) => {
     const matchesGroup = group === "Todos" || item.bodyGroup === group;
-    const matchesQuery = [item.name, item.bodyGroup, item.primaryMuscle, item.equipment]
+    const matchesMuscle = muscle === "Todos" || item.primaryMuscle === muscle;
+    const selectedEquipmentName = equipment.find((entry) => entry.id === equipmentId)?.name;
+    const matchesEquipment =
+      equipmentId === "Todos" ||
+      (item.equipmentIds ?? []).includes(equipmentId) ||
+      item.equipment === selectedEquipmentName;
+    const matchesAvailable = !onlyAvailable || !(item.equipmentIds?.length) || item.equipmentIds.some((id) => activeEquipmentIds.has(id));
+    const matchesQuery = [item.name, item.bodyGroup, item.primaryMuscle, getEquipmentLabel(item, equipment), item.type]
       .filter(Boolean)
       .some((value) => String(value).toLowerCase().includes(query.trim().toLowerCase()));
 
-    return matchesGroup && (!query.trim() || matchesQuery);
+    return matchesGroup && matchesMuscle && matchesEquipment && matchesAvailable && (!query.trim() || matchesQuery);
   });
 
   function createAndSelect() {
@@ -544,12 +738,16 @@ function ExerciseSelectorModal({
       return;
     }
 
+    const equipmentResult = ensureEquipmentByName(newEquipment.trim(), equipment);
+    onEquipmentCreated(equipmentResult.equipment);
+
     onCreate({
       id: crypto.randomUUID(),
       name: newName.trim(),
       bodyGroup: group === "Todos" ? "Pecho" : group,
       primaryMuscle: newMuscle.trim() || (group === "Todos" ? "General" : group),
-      equipment: newEquipment.trim(),
+      equipment: equipmentResult.item ? equipmentResult.item.name : newEquipment.trim(),
+      equipmentIds: equipmentResult.item ? [equipmentResult.item.id] : [],
       type: "strength",
     });
   }
@@ -569,14 +767,38 @@ function ExerciseSelectorModal({
 
         <div className="mt-4 grid gap-2">
           <input className="field-input" placeholder="Buscar por nombre, musculo o equipo" value={query} onChange={(event) => setQuery(event.target.value)} />
-          <select className="field-input" value={group} onChange={(event) => setGroup(event.target.value)}>
-            <option value="Todos">Todos los grupos</option>
-            {bodyGroups.map((bodyGroup) => (
-              <option key={bodyGroup} value={bodyGroup}>
-                {bodyGroup}
-              </option>
-            ))}
-          </select>
+          <div className="grid grid-cols-2 gap-2">
+            <select className="field-input" value={group} onChange={(event) => setGroup(event.target.value)}>
+              <option value="Todos">Todos los grupos</option>
+              {bodyGroups.map((bodyGroup) => (
+                <option key={bodyGroup} value={bodyGroup}>
+                  {bodyGroup}
+                </option>
+              ))}
+            </select>
+            <select className="field-input" value={muscle} onChange={(event) => setMuscle(event.target.value)}>
+              <option value="Todos">Todos los musculos</option>
+              {muscles.map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <select className="field-input" value={equipmentId} onChange={(event) => setEquipmentId(event.target.value)}>
+              <option value="Todos">Todo equipamiento</option>
+              {equipment.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                </option>
+              ))}
+            </select>
+            <label className="flex items-center justify-between rounded-xl border border-[#E5E7EB] bg-white px-3 py-2 text-xs font-black text-[#6B7280]">
+              Solo disponible
+              <input type="checkbox" checked={onlyAvailable} onChange={(event) => setOnlyAvailable(event.target.checked)} />
+            </label>
+          </div>
         </div>
 
         <div className="mt-4 min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
@@ -632,6 +854,36 @@ function ConfirmDeleteRoutineModal({
           </button>
           <button type="button" className="rounded-xl bg-[#E11D48] px-3 py-3 text-sm font-bold text-white" onClick={onDelete}>
             Eliminar rutina
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function UnsavedChangesModal({
+  onSave,
+  onDiscard,
+  onContinue,
+}: {
+  onSave: () => void;
+  onDiscard: () => void;
+  onContinue: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-30 grid place-items-center bg-[#1F2937]/20 p-4">
+      <div className="w-full max-w-sm rounded-2xl border border-[#E5E7EB] bg-white p-5 shadow-xl">
+        <h3 className="text-lg font-black text-[#1F2937]">Tenes cambios sin guardar.</h3>
+        <p className="mt-2 text-sm leading-6 text-[#6B7280]">Que queres hacer?</p>
+        <div className="mt-4 grid gap-2">
+          <button type="button" className="rounded-xl bg-[#FF8A5B] px-3 py-3 text-sm font-bold text-white" onClick={onSave}>
+            Guardar cambios
+          </button>
+          <button type="button" className="secondary-button" onClick={onDiscard}>
+            Salir sin guardar
+          </button>
+          <button type="button" className="secondary-button" onClick={onContinue}>
+            Seguir editando
           </button>
         </div>
       </div>
